@@ -27,14 +27,6 @@ var testPollingOptions = watch.PollingFileWatcherOptions{
 	MaxPollFrequency: 5 * time.Millisecond,
 }
 
-func init() {
-	// Clear the temporary test directory
-	err := os.RemoveAll(".test")
-	if err != nil {
-		panic(err)
-	}
-}
-
 func TestMustExist(t *testing.T) {
 	tail, err := TailFile("/no/such/file", Config{Follow: true, MustExist: true})
 	if err == nil {
@@ -524,7 +516,7 @@ type TailTest struct {
 }
 
 func NewTailTest(name string, t *testing.T) TailTest {
-	tt := TailTest{name, ".test/" + name, make(chan struct{}), t}
+	tt := TailTest{name, t.TempDir() + "/" + name, make(chan struct{}), t}
 	err := os.MkdirAll(tt.path, os.ModeTemporary|0700)
 	if err != nil {
 		tt.Fatal(err)
