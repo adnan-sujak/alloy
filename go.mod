@@ -295,7 +295,6 @@ require (
 	google.golang.org/api v0.248.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.10
-	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	gotest.tools v2.2.0+incompatible

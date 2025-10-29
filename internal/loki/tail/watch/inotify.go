@@ -10,8 +10,8 @@ import (
 
 	"github.com/grafana/alloy/internal/loki/tail/util"
 
-	"gopkg.in/fsnotify/fsnotify.v1"
-	"gopkg.in/tomb.v1"
+	"github.com/fsnotify/fsnotify"
+	"gopkg.in/tomb.v1" //TODO: Replace this with a more recent module?
 )
 
 // InotifyFileWatcher uses inotify to monitor file changes.
