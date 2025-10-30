@@ -20,7 +20,7 @@ type PollingFileWatcher struct {
 	Filename string
 	Size     int64
 	Options  PollingFileWatcherOptions
-	sizeMtx  sync.RWMutex // protects Size field
+	mtx      sync.RWMutex // protects File and Size fields
 }
 
 // PollingFileWatcherOptions customizes a PollingFileWatcher.
@@ -92,16 +92,16 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	// XXX: use tomb.Tomb to cleanly manage these goroutines. replace
 	// the fatal (below) with tomb's Kill.
 
-	fw.sizeMtx.Lock()
+	fw.mtx.Lock()
 	fw.Size = pos
-	fw.sizeMtx.Unlock()
+	fw.mtx.Unlock()
 
 	bo := newPollBackoff(fw.Options)
 
 	go func() {
-		fw.sizeMtx.RLock()
+		fw.mtx.RLock()
 		prevSize := fw.Size
-		fw.sizeMtx.RUnlock()
+		fw.mtx.RUnlock()
 		for {
 			select {
 			case <-t.Dying():
@@ -110,7 +110,10 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			}
 
 			time.Sleep(bo.WaitTime())
-			deletePending, err := IsDeletePending(fw.File)
+			fw.mtx.RLock()
+			file := fw.File
+			fw.mtx.RUnlock()
+			deletePending, err := IsDeletePending(file)
 
 			// DeletePending is a windows state where the file has been queued
 			// for delete but won't actually get deleted until all handles are
@@ -145,10 +148,10 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			}
 
 			// File got truncated?
-			fw.sizeMtx.Lock()
+			fw.mtx.Lock()
 			fw.Size = fi.Size()
 			currentSize := fw.Size
-			fw.sizeMtx.Unlock()
+			fw.mtx.Unlock()
 
 			if prevSize > 0 && prevSize > currentSize {
 				changes.NotifyTruncated()
@@ -183,13 +186,17 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 }
 
 func (fw *PollingFileWatcher) SetFile(f *os.File) {
+	fw.mtx.Lock()
 	fw.File = f
+	fw.mtx.Unlock()
 }
 
 func (fw *PollingFileWatcher) closeFile() {
+	fw.mtx.Lock()
 	if fw.File != nil {
 		_ = fw.File.Close() // Best effort close
 	}
+	fw.mtx.Unlock()
 }
 
 type pollBackoff struct {
