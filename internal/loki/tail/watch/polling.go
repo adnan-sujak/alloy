@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/grafana/alloy/internal/loki/tail/util"
@@ -19,6 +20,7 @@ type PollingFileWatcher struct {
 	Filename string
 	Size     int64
 	Options  PollingFileWatcherOptions
+	sizeMtx  sync.RWMutex // protects Size field
 }
 
 // PollingFileWatcherOptions customizes a PollingFileWatcher.
@@ -90,12 +92,16 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	// XXX: use tomb.Tomb to cleanly manage these goroutines. replace
 	// the fatal (below) with tomb's Kill.
 
+	fw.sizeMtx.Lock()
 	fw.Size = pos
+	fw.sizeMtx.Unlock()
 
 	bo := newPollBackoff(fw.Options)
 
 	go func() {
+		fw.sizeMtx.RLock()
 		prevSize := fw.Size
+		fw.sizeMtx.RUnlock()
 		for {
 			select {
 			case <-t.Dying():
@@ -139,21 +145,25 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			}
 
 			// File got truncated?
+			fw.sizeMtx.Lock()
 			fw.Size = fi.Size()
-			if prevSize > 0 && prevSize > fw.Size {
+			currentSize := fw.Size
+			fw.sizeMtx.Unlock()
+
+			if prevSize > 0 && prevSize > currentSize {
 				changes.NotifyTruncated()
-				prevSize = fw.Size
+				prevSize = currentSize
 				bo.Reset()
 				continue
 			}
 			// File got bigger?
-			if prevSize > 0 && prevSize < fw.Size {
+			if prevSize > 0 && prevSize < currentSize {
 				changes.NotifyModified()
-				prevSize = fw.Size
+				prevSize = currentSize
 				bo.Reset()
 				continue
 			}
-			prevSize = fw.Size
+			prevSize = currentSize
 
 			// File was appended to (changed)?
 			modTime := fi.ModTime()
